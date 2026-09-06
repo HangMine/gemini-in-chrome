@@ -136,7 +136,15 @@ if [ -n "$output" ]; then /bin/cp "$GEMINI_TEST_HELPER" "$output"; else /bin/cat
             command, input=INSTALLER.read_bytes() if pipe else b"", capture_output=True,
             env=self.env, cwd=self.root, timeout=30, start_new_session=True,
         )
-        output = result.stdout.decode("utf-8") + result.stderr.decode("utf-8")
+        try:
+            output = result.stdout.decode("utf-8") + result.stderr.decode("utf-8")
+        except UnicodeDecodeError as error:
+            self.fail(
+                "Installer emitted invalid UTF-8: " + str(error)
+                + "; returncode=" + str(result.returncode)
+                + "; stdout=" + repr(result.stdout)
+                + "; stderr=" + repr(result.stderr)
+            )
         self.assertNotIn("\x1b[", output, "Non-terminal output should not contain ANSI colors.")
         if success:
             self.assertEqual(result.returncode, 0, output)
@@ -377,6 +385,56 @@ if [ -n "$output" ]; then /bin/cp "$GEMINI_TEST_HELPER" "$output"; else /bin/cat
         self.assertFalse(self.backup_dir.exists())
         self.assertEqual(list(self.tmp.iterdir()), [])
 
+    @unittest.skipUnless(
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("GITHUB_REF") == "refs/heads/main"
+        and os.environ.get("GITHUB_REPOSITORY") == "HangMine/gemini-in-chrome",
+        "Published remote command is verified only in this repository's main CI",
+    )
+    def test_published_main_remote_command(self):
+        (self.mock_bin / "curl").unlink()
+        base_url = "https://raw.githubusercontent.com/HangMine/gemini-in-chrome/main/"
+        for relative_path in ("install.sh", "src/configure-macos.js"):
+            url = base_url + relative_path
+            downloaded = subprocess.run(
+                ["/usr/bin/curl", "--connect-timeout", "15", "--max-time", "60", "-fsSL", url],
+                capture_output=True, env=self.env, timeout=70,
+            )
+            self.assertEqual(downloaded.returncode, 0, "Remote download failed: " + url + "; stderr=" + repr(downloaded.stderr))
+            expected = (REPO / relative_path).read_bytes()
+            if downloaded.stdout != expected:
+                self.fail(
+                    "Published main content differs from this CI checkout: " + url
+                    + "; checkout_sha256=" + hashlib.sha256(expected).hexdigest()
+                    + "; remote_sha256=" + hashlib.sha256(downloaded.stdout).hexdigest()
+                )
+        result = subprocess.run(
+            [
+                "/bin/bash", "-o", "pipefail", "-c",
+                '/usr/bin/curl --connect-timeout 15 --max-time 60 -fsSL "$1" | /bin/bash -s -- --user-data-dir "$2"',
+                "gemini-published-command", base_url + "install.sh", str(self.user_data),
+            ],
+            input=b"", capture_output=True, env=self.env, cwd=self.root,
+            timeout=190, start_new_session=True,
+        )
+        try:
+            output = result.stdout.decode("utf-8") + result.stderr.decode("utf-8")
+        except UnicodeDecodeError as error:
+            self.fail(
+                "Published installer emitted invalid UTF-8: " + str(error)
+                + "; returncode=" + str(result.returncode)
+                + "; stdout=" + repr(result.stdout) + "; stderr=" + repr(result.stderr)
+            )
+        self.assertEqual(result.returncode, 0, output)
+        self.assertNotIn("\x1b[", output)
+        self.assertIn("\u8bbe\u7f6e\u5df2\u5199\u5165", output)
+        state = self.read_state()
+        self.assertEqual(state[COUNTRY], "us")
+        self.assertIn("glic@1", state["browser"]["enabled_labs_experiments"])
+        self.assertEqual(state["nested"], ORIGINAL["nested"])
+        self.assert_original_backup(json_bytes(ORIGINAL))
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
     def run_with_terminal(self, close_chrome):
         import pty
 
@@ -414,11 +472,18 @@ if [ -n "$output" ]; then /bin/cp "$GEMINI_TEST_HELPER" "$output"; else /bin/cat
             if status is None:
                 os.kill(pid, signal.SIGKILL)
                 os.waitpid(pid, 0)
-                self.fail("Installer terminal interaction timed out: " + output.decode("utf-8", errors="replace"))
+                self.fail("Installer terminal interaction timed out; output=" + repr(bytes(output)))
         finally:
             os.close(master)
-        self.assertTrue(entered, "Installer did not request Enter before checking Chrome again.")
-        return status, output.decode("utf-8")
+        try:
+            decoded_output = output.decode("utf-8")
+        except UnicodeDecodeError as error:
+            self.fail(
+                "Terminal installer emitted invalid UTF-8: " + str(error)
+                + "; returncode=" + str(status) + "; output=" + repr(bytes(output))
+            )
+        self.assertTrue(entered, "Installer did not request Enter before checking Chrome again: " + decoded_output)
+        return status, decoded_output
 
     def test_terminal_enter_rechecks_chrome_then_installs(self):
         self.env["GEMINI_TEST_PROCESS_MODE"] = "close"

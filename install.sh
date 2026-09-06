@@ -75,7 +75,7 @@ gemini_main() (
         fi
         exit 0
     fi
-    [ -f "$state_path" ] || fail "未找到 Chrome 配置：$state_path。请先运行一次 Chrome，或用 --user-data-dir 指定数据目录。"
+    [ -f "$state_path" ] || fail "未找到 Chrome 配置：${state_path}。请先运行一次 Chrome，或用 --user-data-dir 指定数据目录。"
     [ ! -L "$state_path" ] || fail 'Local State 是符号链接，请使用原始配置文件所在的数据目录。'
     user_data_dir=$(cd -- "$user_data_dir" && pwd -P)
     state_path="$user_data_dir/Local State"
@@ -83,7 +83,7 @@ gemini_main() (
     manifest_path="$backup_dir/restore.json"
     if $what_if; then
         if $uninstall; then action='按首次备份恢复地区和 Gemini 开关'; else action="设置永久地区 $country 并启用 Gemini 开关"; fi
-        status "$cyan" "[预览] 将$action：$state_path"
+        status "$cyan" "[预览] 将${action}：$state_path"
         status "$cyan" '[预览] 未修改配置、未建立备份，无需关闭 Chrome。'
         exit 0
     fi
@@ -182,7 +182,7 @@ gemini_main() (
         mv -- "$manifest_path" "$archive" || fail '配置已恢复，但回退记录未能归档，请保留备份并检查目录权限。'
         status "$green" '[完成] 已还原原有地区和 Gemini 开关，其他 Chrome 设置保持不变。'
     else
-        status "$green" "[完成] 永久实验地区已设为 $country，Gemini 开关已启用。"
+        status "$green" "[完成] 永久实验地区已设为 ${country}，Gemini 开关已启用。"
     fi
     status "$cyan" "[备份] 原始配置保留在：$backup_dir"
     status "$green" '[下一步] 设置已写入，请从原来的 Chrome 图标重新启动并验证侧栏。'
