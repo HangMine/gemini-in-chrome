@@ -3,6 +3,7 @@ name: Test installer
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,3 +19,13 @@ jobs:
       - name: Test with PowerShell 7
         shell: pwsh
         run: ./tests/install.Tests.ps1
+  test-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test with system Bash and JavaScript for Automation
+        run: python3 ./tests/install-macos.Tests.py
