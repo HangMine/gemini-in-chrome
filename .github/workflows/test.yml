@@ -10,11 +10,11 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        shell: [powershell, pwsh]
     steps:
       - uses: actions/checkout@v4
-      - name: Test shortcut installation and removal
-        shell: ${{ matrix.shell }}
+      - name: Test with Windows PowerShell 5.1
+        shell: powershell
+        run: ./tests/install.Tests.ps1
+      - name: Test with PowerShell 7
+        shell: pwsh
         run: ./tests/install.Tests.ps1
